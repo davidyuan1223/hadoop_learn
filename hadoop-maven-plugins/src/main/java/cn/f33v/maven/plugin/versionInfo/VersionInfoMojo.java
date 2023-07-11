@@ -1,6 +1,7 @@
 package cn.f33v.maven.plugin.versionInfo;
 
 import cn.f33v.maven.plugin.util.Exec;
+import cn.f33v.maven.plugin.util.FileSetUtils;
 import org.apache.maven.model.FileSet;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -9,6 +10,9 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 
+import java.io.*;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -43,6 +47,56 @@ public class VersionInfoMojo extends AbstractMojo {
             project.getProperties().setProperty(scmUriProperty,getSCMUri(scm));
             project.getProperties().setProperty(scmBranchProperty,getSCMBranch(scm));
             project.getProperties().setProperty(scmCommitProperty,getSCMCommit(scm));
+            project.getProperties().setProperty(md5Property,computeMD5());
+        } catch (Throwable e) {
+            throw new MojoExecutionException(e.toString(),e);
+        }
+    }
+
+    private String computeMD5() throws Exception {
+        List<File> files = FileSetUtils.convertFileSetToFiles(source);
+        Collections.sort(files,new MD5Comparator());
+        byte[] md5 = computeMD5(files);
+        String md5Str = byteArrayToString(md5);
+        getLog().info("Computed MD5: "+md5Str);
+        return md5Str;
+    }
+
+    private String byteArrayToString(byte[] array) {
+        StringBuilder stringBuilder = new StringBuilder();
+        for (byte b : array) {
+            stringBuilder.append(Integer.toHexString(0xff&b));
+        }
+        return stringBuilder.toString();
+    }
+
+    private byte[] computeMD5(List<File> files) throws IOException, NoSuchAlgorithmException {
+        MessageDigest md5 = MessageDigest.getInstance("MD5");
+        for (File file : files) {
+            getLog().debug("Computing MD5 for: "+file);
+            md5.update(readFile(file));
+        }
+        return md5.digest();
+    }
+
+    private byte[] readFile(File file) throws IOException {
+        RandomAccessFile raf = new RandomAccessFile(file, "r");
+        byte[] buffer = new byte[(int) raf.length()];
+        raf.readFully(buffer);
+        raf.close();
+        return buffer;
+    }
+
+    static class MD5Comparator implements Comparator<File>, Serializable{
+        private static final long serialVersionUID=1L;
+
+        @Override
+        public int compare(File o1, File o2) {
+            return normalizePath(o1).compareTo(normalizePath(o2));
+        }
+        private String normalizePath(File file){
+            return file.getPath().toLowerCase(Locale.ENGLISH)
+                    .replaceAll("\\\\","/");
         }
     }
 
