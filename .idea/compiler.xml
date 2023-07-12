@@ -6,15 +6,15 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
-        <module name="hadoop-assemblies" />
         <module name="hadoop-maven-plugins" />
+        <module name="hadoop-assemblies" />
       </profile>
     </annotationProcessing>
   </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
-      <module name="hadoop-assemblies" options="-h $PROJECT_DIR$/hadoop-assemblies/target/native/javah/" />
-      <module name="hadoop-maven-plugins" options="-h $PROJECT_DIR$/hadoop-maven-plugins/target/native/javah/" />
+      <module name="hadoop-assemblies" options="-h D:\code\hadoop_learn\hadoop-assemblies\target/native/javah/" />
+      <module name="hadoop-maven-plugins" options="-h D:\code\hadoop_learn\hadoop-maven-plugins\target/native/javah/" />
     </option>
   </component>
 </project>
