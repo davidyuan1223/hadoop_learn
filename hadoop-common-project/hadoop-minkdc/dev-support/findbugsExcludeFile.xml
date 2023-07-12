@@ -1,0 +1,7 @@
+<FindBugsFilter>
+    <Match>
+        <Class name="org.apache.hadoop.minikdc.MiniKdc"/>
+        <Method name="stop"/>
+        <Bug pattern="SWL_SLEEP_WITH_LOCK_HELD"/>
+    </Match>
+</FindBugsFilter>

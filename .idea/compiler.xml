@@ -7,14 +7,20 @@
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
         <module name="hadoop-maven-plugins" />
+        <module name="hadoop-minkdc" />
         <module name="hadoop-assemblies" />
+        <module name="hadoop-auth" />
+        <module name="hadoop-annotations" />
       </profile>
     </annotationProcessing>
   </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
-      <module name="hadoop-assemblies" options="-h D:\code\hadoop_learn\hadoop-assemblies\target/native/javah/" />
-      <module name="hadoop-maven-plugins" options="-h D:\code\hadoop_learn\hadoop-maven-plugins\target/native/javah/" />
+      <module name="hadoop-annotations" options="-h $PROJECT_DIR$/hadoop-common-project/hadoop-annotations/target/native/javah/" />
+      <module name="hadoop-assemblies" options="-h $PROJECT_DIR$/hadoop-assemblies/target/native/javah/" />
+      <module name="hadoop-auth" options="-h $PROJECT_DIR$/hadoop-common-project/hadoop-auth/target/native/javah/" />
+      <module name="hadoop-maven-plugins" options="-h $PROJECT_DIR$/hadoop-maven-plugins/target/native/javah/" />
+      <module name="hadoop-minkdc" options="-h $PROJECT_DIR$/hadoop-common-project/hadoop-minkdc/target/native/javah/" />
     </option>
   </component>
 </project>

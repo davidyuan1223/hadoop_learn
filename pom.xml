@@ -12,6 +12,8 @@
         <module>hadoop-project-dist</module>
         <module>hadoop-assemblies</module>
         <module>hadoop-maven-plugins</module>
+        <module>hadoop-common-project</module>
+        <module>hadoop-auth</module>
     </modules>
     <packaging>pom</packaging>
     <dependencyManagement>
