@@ -32,6 +32,10 @@ public final class Classpath {
             terminate(1,"unrecognized option");
             return;
         }
+        String jarPath = argList.get(0);
+        try {
+
+        }
     }
 
     private static void terminate(int status, String msg) {
