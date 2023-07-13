@@ -5,6 +5,8 @@
     <file url="file://$PROJECT_DIR$/hadoop-common-project/hadoop-annotations/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/hadoop-common-project/hadoop-auth/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/hadoop-common-project/hadoop-auth/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/hadoop-common-project/hadoop-common/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/hadoop-common-project/hadoop-common/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/hadoop-common-project/hadoop-minkdc/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/hadoop-common-project/hadoop-minkdc/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/hadoop-maven-plugins/src/main/java" charset="UTF-8" />

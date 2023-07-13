@@ -14,6 +14,7 @@
         <module>hadoop-auth</module>
         <module>hadoop-annotations</module>
         <module>hadoop-minkdc</module>
+        <module>hadoop-common</module>
     </modules>
     <artifactId>hadoop-common-project</artifactId>
 
