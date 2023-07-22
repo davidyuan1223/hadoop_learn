@@ -10,8 +10,6 @@ import java.io.IOException;
 @InterfaceAudience.Public
 @InterfaceStability.Stable
 public interface Writable {
-
-    void write(DataOutput output)throws IOException;
-
-    void readFields(DataInput in)throws IOException;
+    void write(DataOutput out)throws IOException;
+    void readField(DataInput in)throws IOException;
 }

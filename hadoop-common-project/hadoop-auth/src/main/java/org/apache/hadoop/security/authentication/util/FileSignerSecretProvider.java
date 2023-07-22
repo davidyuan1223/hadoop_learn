@@ -18,7 +18,7 @@ public class FileSignerSecretProvider extends SignerSecretProvider {
     public FileSignerSecretProvider(){}
     @Override
     public void init(Properties config, ServletContext servletContext, long tokenValidity) throws Exception {
-        String signatureSecretFile = config.getProperty(AuthenticationFilter.SIGNATURE_SECRET_FILE, null);
+        String signatureSecretFile = config.getProperty(ProAuthenticationFilter.SIGNATURE_SECRET_FILE, null);
         if (signatureSecretFile != null) {
             try(Reader reader=new InputStreamReader(Files.newInputStream(
                     Paths.get(signatureSecretFile)), StandardCharsets.UTF_8)){
