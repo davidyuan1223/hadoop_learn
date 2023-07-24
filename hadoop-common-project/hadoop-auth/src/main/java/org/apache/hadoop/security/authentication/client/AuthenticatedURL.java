@@ -40,7 +40,7 @@ public class AuthenticatedURL {
     protected Authenticator getAuthenticator(){
         return authenticator;
     }
-    public HttpURLConnection openConnection(URL url,Token token) throws IOException, AuthenticationException {
+    public HttpURLConnection openConnection(URL url,Token token) throws Exception {
         if (url == null) {
             throw new IllegalArgumentException("url cannot be null");
         }

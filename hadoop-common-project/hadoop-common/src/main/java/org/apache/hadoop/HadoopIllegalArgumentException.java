@@ -1,11 +1,7 @@
-package org.apache.hadoop.io;
+package org.apache.hadoop;
 
 import com.apache.hadoop.classification.InterfaceAudience;
 import com.apache.hadoop.classification.InterfaceStability;
-
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
 
 /**
  * @Description: TODO
@@ -14,7 +10,9 @@ import java.io.IOException;
  **/
 @InterfaceAudience.Public
 @InterfaceStability.Stable
-public interface Writable {
-    void writer(DataOutput out)throws IOException;
-    void readFields(DataInput in)throws IOException;
+public class HadoopIllegalArgumentException extends IllegalArgumentException {
+    private static final long serialVersionUID=1L;
+    public HadoopIllegalArgumentException(final String msg){
+        super(msg);
+    }
 }

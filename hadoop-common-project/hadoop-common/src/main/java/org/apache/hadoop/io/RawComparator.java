@@ -3,9 +3,7 @@ package org.apache.hadoop.io;
 import com.apache.hadoop.classification.InterfaceAudience;
 import com.apache.hadoop.classification.InterfaceStability;
 
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
+import java.util.Comparator;
 
 /**
  * @Description: TODO
@@ -14,7 +12,7 @@ import java.io.IOException;
  **/
 @InterfaceAudience.Public
 @InterfaceStability.Stable
-public interface Writable {
-    void writer(DataOutput out)throws IOException;
-    void readFields(DataInput in)throws IOException;
+public interface RawComparator<T> extends Comparator<T> {
+    int compare(byte[] b1,int start1,int length1,
+                byte[] b2,int start2,int length2);
 }

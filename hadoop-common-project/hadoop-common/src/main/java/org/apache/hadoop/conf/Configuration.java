@@ -2,6 +2,10 @@ package org.apache.hadoop.conf;
 
 import com.apache.hadoop.classification.InterfaceAudience;
 import com.apache.hadoop.classification.InterfaceStability;
+import com.apache.hadoop.classification.VisibleForTesting;
+import com.ctc.wstx.api.ReaderConfig;
+import com.ctc.wstx.io.StreamBootstrapper;
+import com.ctc.wstx.io.SystemId;
 import com.ctc.wstx.stax.WstxInputFactory;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
@@ -19,6 +23,7 @@ import org.apache.hadoop.thirdparty.com.google.common.base.Strings;
 import org.apache.hadoop.util.ReflectionUtils;
 import org.apache.hadoop.util.StringInterner;
 import org.apache.hadoop.util.StringUtils;
+import org.apache.hadoop.util.XMLUtils;
 import org.apache.http.util.NetUtils;
 import org.codehaus.stax2.XMLStreamReader2;
 import org.slf4j.Logger;
@@ -29,8 +34,15 @@ import org.w3c.dom.Element;
 import javax.annotation.Nullable;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
 import java.io.*;
 import java.lang.ref.WeakReference;
 import java.net.*;
@@ -1140,7 +1152,477 @@ public class Configuration implements Iterable<Map.Entry<String ,String >>, Writ
     private synchronized void loadProps(final Properties props,
                                         final int startIndex,
                                         final boolean fullReload){
+        if (props != null) {
+            Map<String ,String []> backup=
+                    updatingResources!=null?new ConcurrentHashMap<>(updatingResources):null;
+            loadResources(props,resources,startIndex,fullReload,quietmode);
+            if (overlay != null) {
+                props.putAll(overlay);
+                if (backup != null) {
+                    for (Map.Entry<Object, Object> entry : overlay.entrySet()) {
+                        String key= (String) entry.getKey();
+                        String[] source=backup.get(key);
+                        if (source != null) {
+                            updatingResources.put(key,source);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    private Resource loadResource(Properties properties,
+                                  Resource wrapper,boolean quiet){
+        String name=UNKNOWN_RESOURCE;
+        try {
+            Object resource=wrapper.getResource();
+            name=wrapper.getName();
+            boolean returnCachedProperties=false;
 
+            if (resource instanceof InputStream) {
+                returnCachedProperties=true;
+            } else if (resource instanceof Properties) {
+                overlay(properties,(Properties)resource);
+            }
+            XMLStreamReader2 reader2=getStreamReader(wrapper,quiet);
+            if (reader2 == null) {
+                if (quiet) {
+                    return null;
+                }
+                throw new RuntimeException(resource+" not found");
+            }
+            Properties toAddTo=properties;
+            if (returnCachedProperties) {
+                toAddTo=new Properties();
+            }
+            List<ParsedItem> items = new Parser(reader2, wrapper, quiet).parse();
+            for (ParsedItem item : items) {
+                loadProperty(toAddTo,item.name,item.key,item.value,
+                        item.isFinal,item.sources);
+            }
+            reader2.close();
+            if (returnCachedProperties) {
+                overlay(properties,toAddTo);
+                return new Resource(toAddTo,name,wrapper.isRestrictParser());
+            }
+            return null;
+        }catch (IOException|XMLStreamException e){
+            LOG.error("error parsing conf "+name,e);
+            throw new RuntimeException(e);
+        }
+    }
+    private void loadResources(Properties properties,
+                               ArrayList<Resource> resources,
+                               int startIdx,
+                               boolean fullReload,
+                               boolean quiet){
+        if (loadDefaults && fullReload){
+            for (String resource : defaultResources) {
+                loadResource(properties,new Resource(resource,false),quiet);
+            }
+        }
+        for (int i = startIdx; i < resources.size(); i++) {
+            Resource ret = loadResource(properties, resources.get(i), quiet);
+            if (ret != null) {
+                resources.set(i,ret);
+            }
+        }
+        this.addTags(properties);
+    }
+    @VisibleForTesting
+    void loadDeprecation(String message){
+        LOG_DEPRECATION.info(message);
+    }
+    void loadDeprecationOnce(String name,String message){
+        DeprecatedKeyInfo keyInfo = getDeprecatedKeyInfo(name);
+        if (keyInfo != null && !keyInfo.getAndSetAccessed()) {
+            LOG_DEPRECATION.info(keyInfo.getWarningMessage(message));
+        }
+    }
+
+    @VisibleForTesting
+    public boolean onlyKeyExists(String name){
+        String[] names = handleDeprecation(deprecationContext.get(), name);
+        for (String n : names) {
+            if (getProps().getProperty(n, DEFAULT_STRING_CHECK)
+                    .equals(DEFAULT_STRING_CHECK)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    private void overlay(Properties to,Properties from){
+        synchronized (from){
+            for (Map.Entry<Object, Object> entry : from.entrySet()) {
+                to.put(entry.getKey(),entry.getValue());
+            }
+        }
+    }
+    private XMLStreamReader parse(InputStream is,String systemIdStr,
+                                  boolean restricted) throws XMLStreamException {
+        if (!quietmode) {
+            LOG.debug("parsing input stream "+is);
+        }
+        if (is == null) {
+            return null;
+        }
+        SystemId systemId = SystemId.construct(systemIdStr);
+        ReaderConfig readerConfig = XML_INPUT_FACTORY.createPrivateConfig();
+        if (restricted) {
+            readerConfig.setProperty(XMLInputFactory.SUPPORT_DTD,false);
+        }
+        return XML_INPUT_FACTORY.createSR(readerConfig,systemId,
+                StreamBootstrapper.getInstance(null,systemId,is),false,true);
+    }
+    private XMLStreamReader parse(URL url,boolean restricted) throws IOException, XMLStreamException {
+        if (!quietmode) {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("parsing URL "+url);
+            }
+        }
+        if (url == null) {
+            return null;
+        }
+        URLConnection connection = url.openConnection();
+        if (connection instanceof JarURLConnection) {
+            connection.setUseCaches(false);
+        }
+        return parse(connection.getInputStream(),url.toString(),restricted);
+    }
+    private void putIntoUpdatingResource(String key,String[] value){
+        Map<String, String[]> localUR = this.updatingResources;
+        if (localUR == null) {
+            synchronized (this){
+                localUR=updatingResources;
+                if (localUR == null) {
+                    updatingResources=localUR=new ConcurrentHashMap<>(8);
+                }
+            }
+        }
+        localUR.put(key,value);
+    }
+    private void readTagFromConfig(String attributeValue,
+                                   String configName,
+                                   String configValue,
+                                   String[] confSource){
+        for (String tagStr : attributeValue.split(",")) {
+            try {
+                tagStr=tagStr.trim();
+                if (configValue == null) {
+                    configValue="";
+                }
+                if (propertyTagsMap.containsKey(tagStr)) {
+                    propertyTagsMap.get(tagStr).setProperty(configName,configValue);
+                }else {
+                    Properties props = new Properties();
+                    props.setProperty(configName,configValue);
+                    propertyTagsMap.put(tagStr,props);
+                }
+            }catch (Exception e){
+                LOG.trace("Tag '{}' for property:{} Source:{}",tagStr,
+                        configName,confSource,e);
+            }
+        }
+    }
+    public synchronized void reloadConfiguration(){
+        properties=null;
+        finalParameters.clear();
+    }
+    public static synchronized void reloadExistingConfigurations(){
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Reloading "+REGISTRY.keySet().size()
+            +" existing configurations");
+        }
+        for (Configuration conf : REGISTRY.keySet()) {
+            conf.reloadConfiguration();
+        }
+    }
+    public void set(String name,String value){
+        set(name,value,null);
+    }
+    public void set(String name,String value,String source){
+        Preconditions.checkArgument(name!=null,
+                "Property name must not be null");
+        Preconditions.checkArgument(value!=null,
+                "The value property %s must not be null",name);
+        name=name.trim();
+        DeprecationContext deprecations = Configuration.deprecationContext.get();
+        if (deprecations.getRevereDeprecatedKeyMap().isEmpty()) {
+            getProps();
+        }
+        getOverlay().setProperty(name,value);
+        getProps().setProperty(name,value);
+        String newSource=(source==null?"programmatically":source);
+        if (!isDeprecated(name)) {
+            putIntoUpdatingResource(name,new String[]{newSource});
+            String[] altNames = getAlternativeNames(name);
+            if (altNames != null) {
+                for (String altName : altNames) {
+                    if (!altName.equals(name)) {
+                        getOverlay().setProperty(altName,value);
+                        getProps().setProperty(altName,value);
+                        putIntoUpdatingResource(altName,new String[]{newSource});
+                    }
+                }
+            }
+        }else {
+            String[] names = handleDeprecation(deprecationContext.get(), name);
+            String altSource="because "+name+" is deprecated";
+            for (String n : names) {
+                getOverlay().setProperty(n,value);
+                getProps().setProperty(n,value);
+                putIntoUpdatingResource(n,new String[]{altSource});
+            }
+        }
+    }
+    @VisibleForTesting
+    public void setAllowNullValueProperties(boolean value){
+        this.allowNullValueProperties=value;
+    }
+    public void setBoolean(String name,boolean value){
+        set(name,Boolean.toString(value));
+    }
+    public void setBooleanIfUnset(String name,boolean value){
+        setIfUnset(name,Boolean.toString(value));
+    }
+    public void setClass(String name,Class<?> theClass,Class<?> xface){
+        if (!xface.isAssignableFrom(theClass)) {
+            throw new RuntimeException(theClass+" not "+xface.getName());
+        }
+        set(name,theClass.getName());
+    }
+    public void setClassLoader(ClassLoader classLoader){
+        this.classLoader=classLoader;
+    }
+    public void setDeprecatedProperties(){
+        DeprecationContext deprecations = Configuration.deprecationContext.get();
+        Properties props = getProps();
+        Properties overlay = getOverlay();
+        for (Map.Entry<String, DeprecatedKeyInfo> entry : deprecations.getDeprecatedKeyInfoMap().entrySet()) {
+            String depKey=entry.getKey();
+            if (!overlay.contains(depKey)) {
+                for (String newKey : entry.getValue().newKeys) {
+                    String val = overlay.getProperty(newKey);
+                    if (val != null) {
+                        props.setProperty(depKey,val);
+                        overlay.setProperty(depKey,val);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    public void setDouble(String name,double value){
+        set(name,Double.toString(value));
+    }
+    public <T extends Enum<T>> void setEnum(String name,T value){
+        set(name,value.toString());
+    }
+    public void setFloat(String name,float value){
+        set(name,Float.toString(value));
+    }
+    public synchronized void setIfUnset(String name,String value){
+        if (get(name)==null) {
+            set(name,value);
+        }
+    }
+    public void setInt(String name,int value){
+        set(name,Integer.toString(value));
+    }
+    public void setLong(String name,long value){
+        set(name,Long.toString(value));
+    }
+    public void setPattern(String name,Pattern pattern){
+        assert pattern!=null : "Pattern cannot be null";
+        set(name,pattern.pattern());
+    }
+    public synchronized void setQuietmode(boolean quietmode){
+        this.quietmode=quietmode;
+    }
+    public void setRestrictSystemProps(boolean val){
+        this.restrictSystemProps=val;
+    }
+    public void setRestrictSystemPropsDefault(boolean val){
+        restrictSystemPropsDefault=val;
+    }
+    public void setSocketAddr(String name,InetSocketAddress address){
+        set(name,NetUtils.getHostPortString(address));
+    }
+    public void setStorageSize(String name,double value,StorageUnit unit){
+        set(name,value+unit.getShortName());
+    }
+    public void setStrings(String name,String ... values){
+        set(name,StringUtils.arrayToString(values));
+    }
+    public void setTimeDuration(String name,long value,TimeUnit unit){
+        set(name,value+ParseTimeDuration.unitFor(unit).suffix());
+    }
+    public int size(){
+        return getProps().size();
+    }
+    public String substituteCommonVariables(String expr){
+        return substituteVars(expr);
+    }
+    private String substituteVars(String expr){
+        if (expr == null) {
+            return null;
+        }
+        String eval=expr;
+        for (int i = 0; i < MAX_SUBST; i++) {
+            final int[] varBounds=findSubVersion(eval);
+            if (varBounds[SUB_START_IDX] == -1) {
+                return eval;
+            }
+            final String var=eval.substring(varBounds[SUB_START_IDX]
+            ,varBounds[SUB_END_IDX]);
+            String val=null;
+            try {
+                if (var.startsWith("env.") && 4 < var.length()) {
+                    String v = var.substring(4);
+                    int j=0;
+                    for (;j<v.length();j++){
+                        char c=v.charAt(j);
+                        if (c==':'&&j<v.length()-1&&v.charAt(j+1)=='-'){
+                            val=getenv(v.substring(0,j));
+                            if (val == null || val.length() == 0) {
+                                val=v.substring(j+2);
+                            }
+                            break;
+                        }else if (c=='-'){
+                            val=getenv(v.substring(0,j));
+                            if (val == null) {
+                                val=v.substring(i+1);
+                            }
+                            break;
+                        }
+                    }
+                    if (i == v.length()) {
+                        val=getenv(v);
+                    }
+                }else {
+                    val=getProperty(var);
+                }
+            }catch (SecurityException e){
+                LOG.warn("Unexpected SecurityException in Configuration",e);
+            }
+            if (val == null) {
+                val=getRaw(var);
+            }
+            if (val == null) {
+                return eval;
+            }
+            final int dollar=varBounds[SUB_START_IDX]-"${".length();
+            final int afterRightBrace=varBounds[SUB_END_IDX]+"}".length();
+            final String refVar=eval.substring(dollar,afterRightBrace);
+            if (val.contains(refVar)) {
+                return expr;
+            }
+            eval=eval.substring(0,dollar)
+                    +val
+                    +eval.substring(afterRightBrace);
+        }
+        throw new IllegalArgumentException("Variable substitution depth too large: "
+        +MAX_SUBST+" "+expr);
+    }
+    @Override
+    public String toString(){
+        StringBuilder sb = new StringBuilder();
+        sb.append("Configuration: ");
+        if (loadDefaults) {
+            toString(defaultResources,sb);
+            if (resources.size()>0) {
+                sb.append(", ");
+            }
+        }
+        toString(resources,sb);
+        return sb.toString();
+    }
+
+    private <T> void toString(List<T> resources,StringBuilder sb){
+        ListIterator<T> i = resources.listIterator();
+        while (i.hasNext()) {
+            if (i.nextIndex() != 0) {
+                sb.append(", ");
+            }
+            sb.append(i.next());
+        }
+    }
+    public synchronized void unset(String name){
+        String[] names=null;
+        if (!isDeprecated(name)) {
+            names=getAlternativeNames(name);
+            if (names == null) {
+                names=new String[]{name};
+            }
+        }else {
+            names=handleDeprecation(deprecationContext.get(),name);
+        }
+        for (String n : names) {
+            getOverlay().remove(n);
+            getProps().remove(n);
+        }
+    }
+    public InetSocketAddress updateConnectAddr(String name,
+                                               InetSocketAddress newAddr){
+        final InetSocketAddress connectAddr=NetUtils.getConnectAddress(newAddr);
+        setSocketAddr(name,connectAddr);
+        return connectAddr;
+    }
+    public InetSocketAddress updateConnectAddr(
+            String hostProperty,
+            String addressProperty,
+            String defaultAddressValue,
+            InetSocketAddress addr
+    ){
+        final String host=get(hostProperty);
+        final String connectHostPort=getTrimmed(addressProperty,defaultAddressValue);
+
+        if (host == null || host.isEmpty() || connectHostPort == null || connectHostPort.isEmpty()) {
+            return updateConnectAddr(addressProperty,addr);
+        }
+        final String connectHost=connectHostPort.split(":")[0];
+        return updateConnectAddr(addressProperty,NetUtils.createSocketAddrForHost(
+                connectHost,addr.getPort()
+        ));
+    }
+    private void updatePropertiesWithDeprecatedKeys(
+            DeprecationContext deprecations,String[] newNames
+    ){
+        for (String newName : newNames) {
+            String deprecatedKey = deprecations.getRevereDeprecatedKeyMap().get(newName);
+            if (deprecatedKey != null && !getProps().containsKey(newName)) {
+                String deprecatedValue = getProps().getProperty(deprecatedKey);
+                if (deprecatedValue != null) {
+                    getProps().setProperty(newName,deprecatedValue);
+                }
+            }
+        }
+    }
+    public void writeXml(OutputStream out) throws IOException {
+        writeXml(new OutputStreamWriter(out,StandardCharsets.UTF_8));
+    }
+    public void writeXml(Writer out) throws IOException {
+        writeXml(null,out);
+    }
+    public void writeXml(@Nullable String propertyName,Writer out) throws IOException {
+        writeXml(propertyName,out,null);
+    }
+    public void writeXml(@Nullable String propertyName,Writer out,Configuration conf) throws IOException {
+        ConfigRedactor redactor=conf!=null?new ConfigRedactor(this):null;
+        Document doc=asXmlDocument(propertyName,redactor);
+        try {
+            DOMSource source = new DOMSource(doc);
+            StreamResult result = new StreamResult(out);
+            TransformerFactory transformerFactory= XMLUtils.newSecureTransformerFactory();
+            Transformer transformer=transformerFactory.newTransformer();
+            transformer.transform(source,result);
+        }catch (TransformerException e){
+            throw new IOException(e);
+        }
+    }
+
+
+    public static void main(String[] args) {
+        new Configuration().writeXml(System.out);
     }
     @Override
     public Iterator<Map.Entry<String, String>> iterator() {
@@ -1156,19 +1638,6 @@ public class Configuration implements Iterable<Map.Entry<String ,String >>, Writ
         return result.entrySet().iterator();
     }
 
-    @Override
-    public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Configuration: ");
-        if (loadDefaults) {
-            toString(defaultResource,sb);
-            if (resources.size() > 0) {
-                sb.append(", ");
-            }
-        }
-        toString(resources,sb);
-        return sb.toString();
-    }
 
     @Override
     public void readField(DataInput in) throws IOException {
