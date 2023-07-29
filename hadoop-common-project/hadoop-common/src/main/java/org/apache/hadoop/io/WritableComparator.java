@@ -4,7 +4,6 @@ import com.apache.hadoop.classification.InterfaceAudience;
 import com.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.util.ReflectionUtils;
 
 import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;

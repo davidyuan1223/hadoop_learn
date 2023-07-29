@@ -3,6 +3,11 @@ package org.apache.hadoop.io;
 import com.apache.hadoop.classification.InterfaceAudience;
 import com.apache.hadoop.classification.InterfaceStability;
 
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+import java.util.Arrays;
+
 /**
  * @Description: TODO
  * @Author: yuan
@@ -25,6 +30,49 @@ public class ArrayWritable implements Writable {
         this.values=values;
     }
     public ArrayWritable(String[] strs){
-        this(Text)
+        this(Text.class,new Writable[strs.length]);
+        for (int i = 0; i < strs.length; i++) {
+            values[i]=new UTF8(strs[i]);
+        }
+    }
+    public Class<? extends Writable> getValueClass(){
+        return valueClass;
+    }
+    public String[] toStrings(){
+        String[] strs=new String[values.length];
+        for (int i = 0; i < values.length; i++) {
+            strs[i]=values[i].toString();
+        }
+        return strs;
+    }
+    public Object toArray(){
+        return Arrays.copyOf(values,values.length);
+    }
+    public void set(Writable[] values){
+        this.values=values;
+    }
+
+    @Override
+    public void readFields(DataInput in) throws IOException {
+        values=new Writable[in.readInt()];
+        for (int i = 0; i < values.length; i++) {
+            Writable value = WritableFactories.newInstance(valueClass);
+            value.readFields(in);
+            values[i]=value;
+        }
+    }
+
+    @Override
+    public void writer(DataOutput out) throws IOException {
+        out.writeInt(values.length);
+        for (int i = 0; i < values.length; i++) {
+            values[i].writer(out);
+        }
+    }
+
+    @Override
+    public String toString() {
+        return "ArrayWritable [valueClass="+valueClass+
+                ",values="+Arrays.toString(values)+"]";
     }
 }
