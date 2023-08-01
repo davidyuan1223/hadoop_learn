@@ -6,12 +6,12 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
-        <module name="hadoop-maven-plugins" />
         <module name="hadoop-minkdc" />
         <module name="hadoop-auth" />
         <module name="hadoop-assemblies" />
-        <module name="hadoop-common" />
         <module name="hadoop-annotations" />
+        <module name="hadoop-common" />
+        <module name="hadoop-maven-plugins" />
       </profile>
     </annotationProcessing>
   </component>

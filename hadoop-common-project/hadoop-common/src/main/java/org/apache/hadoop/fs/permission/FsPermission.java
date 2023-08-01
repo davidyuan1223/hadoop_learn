@@ -1,9 +1,9 @@
-package org.apache.hadoop.fs;
+package org.apache.hadoop.fs.permission;
 
 /**
  * @Description: TODO
  * @Author: yuan
  * @Date: 2023/07/29
  **/
-public class Path {
+public class FsPermission {
 }

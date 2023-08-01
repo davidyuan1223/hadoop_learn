@@ -1,0 +1,27 @@
+package org.apache.hadoop.fs;
+
+import com.apache.hadoop.classification.InterfaceAudience;
+import com.apache.hadoop.classification.InterfaceStability;
+
+import java.io.Serializable;
+import java.nio.ByteBuffer;
+
+/**
+ * @Description: TODO
+ * @Author: yuan
+ * @Date: 2023/07/25
+ **/
+@InterfaceAudience.Public
+@InterfaceStability.Evolving
+@FunctionalInterface
+public interface PathHandler extends Serializable {
+    default byte[] toByteArray(){
+        ByteBuffer bb=bytes();
+        byte[] ret=new byte[bb.remaining()];
+        bb.get(ret);
+        return ret;
+    }
+    ByteBuffer bytes();
+    @Override
+    boolean equals(Object other);
+}

@@ -5,5 +5,5 @@ package org.apache.hadoop.fs;
  * @Author: yuan
  * @Date: 2023/07/29
  **/
-public class Path {
+public class UnresolvedLinkException extends Exception {
 }
