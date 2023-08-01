@@ -453,7 +453,7 @@ public class SequenceFile {
         public static Option bufferSize(int value){
             return new BufferSizeOption(value);
         }
-        public Reader(Configuration conf,Options... opts)throws IOException{
+        public Reader(Configuration conf,Option... opts)throws IOException{
             FileOption fileOption = Options.getOption(FileOption.class, opts);
             InputStreamOption inputStreamOption = Options.getOption(InputStreamOption.class, opts);
             StartOption startOption = Options.getOption(StartOption.class, opts);
@@ -481,6 +481,42 @@ public class SequenceFile {
             }
             long start=startOption==null?0:startOption.getValue();
             initialize(filename,file,start,len,conf,onlyHeaderOption!=null);
+        }
+        @Deprecated
+        public Reader(FileSystem fs,Path file,Configuration conf)throws IOException{
+            this(conf,file(fs.makeQualifed(file)));
+        }
+        @Deprecated
+        public Reader(FSDataInputStream in,int bbufferSize,long start,long length,Configuration conf)throws IOException{
+            this(conf,stream(in),start(start),length(length));
+        }
+        private void initialize(Path filename,FSDataInputStream in,
+                                long start,long length,Configuration conf,
+                                boolean tempReader)throws IOException{
+            if (in == null) {
+                throw new IllegalArgumentException("in==null");
+            }
+            this.filename=filename==null?"<unknown>":filename.toString();
+            this.in=in;
+            this.conf=conf;
+            boolean succeed=false;
+            try {
+                seek(start);
+                this.end=this.in.getPos()+length;
+                if (end < length) {
+                    end=Long.MAX_VALUE;
+                }
+                init(tempReader);
+                succeed=true;
+            }finally {
+                if (!succeed) {
+                    IOUtils.cleanupWithLogger(LOG,this.in);
+                }
+            }
+        }
+        protected FSDataInputStream openFile(FileSystem fs,Path file,int bufferSize,long length)throws IOException{
+            FutureDataInputStreamBuilder builder=fs.openFile(file)
+                    .opt(F)
         }
     }
 }
