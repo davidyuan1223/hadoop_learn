@@ -35,6 +35,9 @@ public class DataOutputBuffer extends DataOutputStream {
     public DataOutputBuffer(){
         this(new Buffer());
     }
+    public DataOutputBuffer(int size){
+        this(new Buffer(size));
+    }
     public DataOutputBuffer(Buffer buffer){
         super(buffer);
         this.buffer=buffer;
