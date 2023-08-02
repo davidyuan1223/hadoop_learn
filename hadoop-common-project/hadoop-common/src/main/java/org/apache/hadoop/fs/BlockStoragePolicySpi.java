@@ -27,5 +27,11 @@ public interface BlockStoragePolicySpi {
      */
     StorageType[] getStorageTypes();
 
+    StorageType[] getCreationFallbacks();
+
+    StorageType[] getReplicationFallbacks();
+
+    boolean isCopyOnCreateFile();
+
 
 }
