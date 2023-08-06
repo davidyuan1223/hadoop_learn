@@ -11,7 +11,7 @@ public class BasicDiskValidator implements DiskValidator {
     public static final String NAME="basic";
 
     @Override
-    public void checkStatus(File dir) throws DiskErrorException {
+    public void checkStatus(File dir) throws DiskChecker.DiskErrorException {
         DiskChecker.checkDir(dir);
     }
 }

@@ -32,14 +32,14 @@ public class AsyncDiskService {
 
     public AsyncDiskService(String[] volumes){
         threadFactory= r -> new Thread(threadGroup,r);;
-        for (int i = 0; i < volumes.length; i++) {
-            ThreadPoolExecutor executor=new ThreadPoolExecutor(
-                    CORE_THREADS_PER_VOLUME,MAXIMUM_THREADS_PER_VOLUME,
+        for (String volume : volumes) {
+            ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                    CORE_THREADS_PER_VOLUME, MAXIMUM_THREADS_PER_VOLUME,
                     THREADS_KEEP_ALIVE_SECOND, TimeUnit.SECONDS,
-                    new LinkedBlockingQueue<>(),threadFactory
+                    new LinkedBlockingQueue<>(), threadFactory
             );
             executor.allowCoreThreadTimeOut(true);
-            executors.put(volumes[i],executor);
+            executors.put(volume, executor);
         }
     }
     public synchronized void execute(String root,Runnable task){

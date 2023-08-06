@@ -1639,7 +1639,7 @@ public class Configuration implements Iterable<Map.Entry<String ,String >>, Writ
 
 
     @Override
-    public void readField(DataInput in) throws IOException {
+    public void readFields(DataInput in) throws IOException {
         clear();
         int size= WritableUtils.readVInt(in);
         for (int i = 0; i < size; i++) {
@@ -1654,7 +1654,7 @@ public class Configuration implements Iterable<Map.Entry<String ,String >>, Writ
     }
 
     @Override
-    public void write(DataOutput out) throws IOException {
+    public void writer(DataOutput out) throws IOException {
         Properties props=getProps();
         WritableUtils.writeVInt(out,props.size());
         for (Map.Entry<Object, Object> item : props.entrySet()) {
@@ -1664,6 +1664,7 @@ public class Configuration implements Iterable<Map.Entry<String ,String >>, Writ
                     updatingResources.get(item.getKey()):null);
         }
     }
+
 
 
     private static class DeprecatedKeyInfo{
