@@ -8,7 +8,7 @@ public class NativeIOException extends IOException {
     private static final long serialVersionUID=1L;
     private Errno errno;
     private int errorCode;
-    private NativeIOException(String msg,Errno errno){
+    public NativeIOException(String msg,Errno errno){
         super(msg);
         this.errno=errno;
         this.errorCode=0;
