@@ -1,0 +1,18 @@
+syntax="proto2";
+option java_package="org.apache.hadoop.ipc.proto";
+option java_outer_classname="GenericRefreshProtocolProtos";
+option java_generic_services=true;
+option java_generate_equals_and_hash=true;
+package hadoop.common;
+
+message GenericRefreshRequestProto{
+  optional string identifier=1;
+  repeated string args=2;
+}
+
+message GenericRefreshResponseProto{
+  optional int32 exitStatus=1;
+  optional string userMessage=2;
+  optional string senderName=3;
+}
+

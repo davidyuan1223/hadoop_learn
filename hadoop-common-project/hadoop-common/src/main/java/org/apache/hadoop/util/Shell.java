@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -480,14 +481,197 @@ public abstract class Shell {
         if (Shell.MAC) {
             System.setProperty("jdk.lang.Process.launchMechanism","POSIX_SPAWN");
         }
-        runCmmand();
+        runCommand();
     }
-    private void runCmmand()throws IOException{
+    private void runCommand()throws IOException{
         ProcessBuilder builder=new ProcessBuilder(getExecString());
         Timer timeOutTimer=null;
-        ShellTimeoutTimerTask
+        ShellTimeoutTimerTask timeoutTimerTask=null;
+        timeOut.set(false);
+        completed.set(false);
+
+        if (!inheritParentEnv) {
+            builder.environment().clear();
+        }
+        builder.environment().putAll(this.environment);
+        if (dir != null) {
+            builder.directory(this.dir);
+        }
+        builder.redirectErrorStream(redirectErrorStream);
+        if (WINDOWS) {
+            synchronized (WindowsProcessLaunchLock){
+                process=builder.start();
+            }
+        }else {
+            process=builder.start();
+        }
+        waitingThread=Thread.currentThread();
+        CHILD_SHELLS.put(this,null);
+        if (timeoutInterval>0) {
+            timeOutTimer=new Timer("Shell command timeout");
+            timeoutTimerTask=new ShellTimeoutTimerTask(this);
+            timeOutTimer.schedule(timeoutTimerTask,timeoutInterval);
+        }
+        final BufferedReader errReader=new BufferedReader(new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8));
+        BufferedReader inReader=new BufferedReader(new InputStreamReader(process.getInputStream(),StandardCharsets.UTF_8));
+        final StringBuffer errMsg=new StringBuffer();
+        Thread errThread=new Thread(){
+            @Override
+            public void run() {
+                try {
+                    String line = errReader.readLine();
+                    while (line != null && !isInterrupted()) {
+                        errMsg.append(line)
+                                .append(System.getProperty("line.separator"));
+                        line=errReader.readLine();
+                    }
+                }catch (IOException e){
+                    if (!isTimeOut()) {
+                        LOG.warn("Error reading the error stream",e);
+                    }else {
+                        LOG.debug("Error reading the error stream due to shell command timeout",e);
+                    }
+                }
+            }
+        };
+        try {
+            errThread.start();
+        }catch (IllegalStateException | OutOfMemoryError e){
+            LOG.error("Caught "+e+". One possible reason is that ulimit setting of 'max user processes' is too low." +
+                    "If so, do 'ulimit -u <largeNum>' any try again.");
+            throw e;
+        }
+        try {
+            parseExecResult(inReader);
+            String line = inReader.readLine();
+            while (line != null) {
+                line=inReader.readLine();
+            }
+            exitCode=process.waitFor();
+            joinThread(errThread);
+            completed.set(true);
+            if (exitCode!=0) {
+                throw new ExitCodeException(exitCode,errMsg.toString());
+            }
+        }catch (InterruptedException e){
+            InterruptedIOException ie = new InterruptedIOException(e.toString());
+            ie.initCause(e);
+            throw ie;
+        }finally {
+            if (timeOutTimer != null) {
+                timeOutTimer.cancel();
+            }
+            try {
+                inReader.close();
+            }catch (IOException e){
+                LOG.warn("Error while closing the input stream",e);
+            }
+            if (!completed.get()) {
+                errThread.interrupt();
+                joinThread(errThread);
+            }
+            try {
+                errReader.close();
+            }catch (IOException e){
+                LOG.warn("Error while closing the error stream",e);
+            }
+            process.destroy();
+            waitingThread=null;
+            CHILD_SHELLS.remove(this);
+            lastTime=Time.monotonicNow();
+        }
     }
 
+    private static void joinThread(Thread t){
+        while (t.isAlive()) {
+            try {
+                t.join();
+            }catch (InterruptedException e){
+                if (LOG.isWarnEnabled()) {
+                    LOG.warn("Interrupted while joining on: "+t,e);
+                }
+                t.interrupt();
+            }
+        }
+    }
+
+    protected abstract String[] getExecString();
+    protected abstract void parseExecResult(BufferedReader lines)throws IOException;
+    public String getEnvironment(String env){
+        return environment.get(env);
+    }
+
+    public Process getProcess() {
+        return process;
+    }
+
+    public int getExitCode() {
+        return exitCode;
+    }
+
+    public Thread getWaitingThread() {
+        return waitingThread;
+    }
+    public boolean isTimeOut(){
+        return timeOut.get();
+    }
+    public void setTimeout(){
+        this.timeOut.set(true);
+    }
+    public static String execCommand(String ...cmd)throws IOException{
+        return execCommand(null,cmd,0L);
+    }
+    public static String execCommand(Map<String ,String > env,String[] cmd,long timeout)throws IOException{
+        ShellCommandExecutor exec = new ShellCommandExecutor(cmd,null,env,timeout);
+        exec.execute();
+        return exec.getOutput();
+    }
+    public static String execCommand(Map<String ,String > env,String ...cmd)throws IOException{
+        return execCommand(env,cmd,0L);
+    }
+    public static void destroyAllShellProcesses(){
+        synchronized (CHILD_SHELLS){
+            for (Shell shell : CHILD_SHELLS.keySet()) {
+                if (shell.getProcess() != null) {
+                    shell.getProcess().destroy();
+                }
+            }
+            CHILD_SHELLS.clear();
+        }
+    }
+    public static Set<Shell> getAllShells(){
+        synchronized (CHILD_SHELLS){
+            return new HashSet<>(CHILD_SHELLS.keySet());
+        }
+    }
+    public static Long getMemlockLimit(Long ulimit){
+        if (WINDOWS) {
+            return Math.min(Integer.MAX_VALUE,ulimit);
+        }
+        return ulimit;
+    }
+
+    public static class ExitCodeException extends IOException{
+        private final int exitCode;
+        public ExitCodeException(int exitCode,String message){
+            super(message);
+            this.exitCode=exitCode;
+        }
+
+        public int getExitCode() {
+            return exitCode;
+        }
+
+        @Override
+        public String toString() {
+            final StringBuilder sb =
+                    new StringBuilder("ExitCodeException ");
+            sb.append("exitCode=").append(exitCode)
+                    .append(": ")
+                    .append(super.getMessage());
+            return sb.toString();
+        }
+    }
 
     public interface CommandExecutor{
         void execute()throws IOException;
@@ -584,6 +768,27 @@ public abstract class Shell {
         @Override
         public void close() {
 
+        }
+
+
+    }
+    private static class ShellTimeoutTimerTask extends TimerTask{
+        private final Shell shell;
+        public ShellTimeoutTimerTask(Shell shell){
+            this.shell=shell;
+        }
+
+        @Override
+        public void run() {
+            Process p=shell.getProcess();
+            try {
+                p.exitValue();
+            }catch (Exception e){
+                if (p != null && !shell.completed.get()) {
+                    shell.setTimeout();
+                    p.destroy();
+                }
+            }
         }
     }
 

@@ -702,7 +702,7 @@
 
             <dependency>
                 <groupId>org.apache.hadoop</groupId>
-                <artifactId>hadoop-minikdc</artifactId>
+                <artifactId>hadoop-minkdc</artifactId>
                 <version>${hadoop.version}</version>
             </dependency>
 
