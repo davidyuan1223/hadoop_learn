@@ -1,18 +1,19 @@
 package org.apache.hadoop.fs.sftp;
 
+import com.apache.hadoop.classification.VisibleForTesting;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.SftpATTRS;
 import com.jcraft.jsch.SftpException;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.*;
 import org.apache.hadoop.fs.permission.FsPermission;
+import org.apache.hadoop.util.Progressable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.util.ArrayList;
@@ -305,12 +306,244 @@ public class SFTPFileSystem extends FileSystem {
         return fileStats.toArray(new FileStatus[fileStats.size()]);
     }
 
+    private boolean rename(ChannelSftp client,Path src,Path dst)throws IOException{
+        Path workDir;
+        try {
+            workDir=new Path(client.pwd());
+        }catch (SftpException e){
+            throw new IOException(e);
+        }
+        Path absoluteSrc = makeAbsolute(workDir, src);
+        Path absoluteDst = makeAbsolute(workDir, dst);
+        if (!exists(client, absoluteSrc)) {
+            throw new IOException(String.format(E_SPATH_NOTEXIST,src));
+        }
+        if (exists(client, absoluteDst)) {
+            throw new IOException(String.format(E_DPATH_EXIST,dst));
+        }
+        boolean renamed=true;
+        try {
+            final String previousCwd=client.pwd();
+            client.cd("/");
+            client.rename(src.toUri().getPath(),dst.toUri().getPath());
+            client.cd(previousCwd);
+        }catch (SftpException e){
+            renamed=false;
+        }
+        return renamed;
+    }
 
+    @Override
+    public void initialize(URI uriInfo,Configuration conf)throws IOException{
+        super.initialize(uriInfo,conf);
+        setConfigurationFromURI(uriInfo,conf);
+        setConf(conf);
+        this.uri=uriInfo;
+    }
 
+    public URI getUri() {
+        return uri;
+    }
+    @Override
+    public FSDataInputStream open(Path f,int bufferSize)throws IOException{
+        ChannelSftp channel = connect();
+        Path workDir;
+        try {
+            workDir=new Path(channel.pwd());
+        }catch (SftpException e){
+            throw new IOException(e);
+        }
+        Path absolute = makeAbsolute(workDir, f);
+        FileStatus fileStat = getFileStatus(channel, absolute);
+        if (fileStat.isDirectory()) {
+            disconnect(channel);
+            throw new IOException(String.format(E_PATH_DIR,f));
+        }
+        try {
+            absolute=new Path("/",channel.realpath(absolute.toUri().getPath()));
+        }catch (SftpException e){
+            throw new IOException(e);
+        }
+        return new FSDataInputStream(new SFTPInputStream(channel,absolute,statistics)){
+            @Override
+            public void close() throws IOException {
+                try {
+                    super.close();
+                }finally {
+                    disconnect(channel);
+                }
+            }
+        };
+    }
+
+    @Override
+    public FSDataOutputStream create(Path f, FsPermission permission,
+                                     boolean overwrite, int bufferSize, short replication, long blockSize,
+                                     Progressable progress)throws IOException{
+        final ChannelSftp client=connect();
+        Path workDir;
+        try {
+            workDir=new Path(client.pwd());
+        }catch (SftpException e){
+            throw new IOException(e);
+        }
+        Path absolute = makeAbsolute(workDir, f);
+        if (exists(client, f)) {
+            if (overwrite) {
+                delete(client,f,false);
+            }else {
+                disconnect(client);
+                throw new IOException(String.format(E_FILE_EXIST,f));
+            }
+        }
+        Path parent = absolute.getParent();
+        if (parent == null || !mkdirs(client, parent, FsPermission.getDefault())) {
+            parent=(parent==null)?new Path("/"):parent;
+            disconnect(client);
+            throw new IOException(String.format(E_CREATE_DIR,parent));
+        }
+        OutputStream os;
+        try {
+            final String previousCwd=client.pwd();
+            client.cd(parent.toUri().getPath());
+            os=client.put(f.getName());
+            client.cd(previousCwd);
+        }catch (SftpException e){
+            throw new IOException(e);
+        }
+        FSDataOutputStream fos = new FSDataOutputStream(os, statistics){
+            @Override
+            public void close() throws IOException {
+                super.close();
+                disconnect(client);
+            }
+        };
+        return fos;
+    }
+
+    @Override
+    public FSDataOutputStream append(Path f,int bufferSize,Progressable progress)throws IOException{
+        throw new UnsupportedOperationException("Append is not supported by SFTPFileSystem");
+    }
+    @Override
+    public boolean rename(Path src,Path dst)throws IOException{
+        ChannelSftp channel = connect();
+        try {
+            boolean success = rename(channel, src, dst);
+            return success;
+        }finally {
+            disconnect(channel);
+        }
+    }
+    @Override
+    public boolean delete(Path f,boolean recursive)throws IOException{
+        ChannelSftp channel = connect();
+        try {
+            return delete(channel,f,recursive);
+        }finally {
+            disconnect(channel);
+        }
+    }
+    @Override
+    public FileStatus[] listStatus(Path f) throws IOException {
+        ChannelSftp client = connect();
+        try {
+            FileStatus[] stats = listStatus(client, f);
+            return stats;
+        } finally {
+            disconnect(client);
+        }
+    }
+    @Override
+    public void setWorkingDirectory(Path newDir) {
+        // we do not maintain the working directory state
+    }
+
+    @Override
+    public Path getWorkingDirectory() {
+        // Return home directory always since we do not maintain state.
+        return getHomeDirectory();
+    }
+
+    /**
+     * Convenience method, so that we don't open a new connection when using this
+     * method from within another method. Otherwise every API invocation incurs
+     * the overhead of opening/closing a TCP connection.
+     */
+    private Path getWorkingDirectory(ChannelSftp client) {
+        // Return home directory always since we do not maintain state.
+        return getHomeDirectory(client);
+    }
+
+    @Override
+    public Path getHomeDirectory() {
+        ChannelSftp channel = null;
+        try {
+            channel = connect();
+            Path homeDir = new Path(channel.pwd());
+            return homeDir;
+        } catch (Exception ioe) {
+            return null;
+        } finally {
+            try {
+                disconnect(channel);
+            } catch (IOException ioe) {
+                return null;
+            }
+        }
+    }
+
+    private Path getHomeDirectory(ChannelSftp channel) {
+        try {
+            return new Path(channel.pwd());
+        } catch (Exception ioe) {
+            return null;
+        }
+    }
+
+    @Override
+    public boolean mkdirs(Path f, FsPermission permission) throws IOException {
+        ChannelSftp client = connect();
+        try {
+            boolean success = mkdirs(client, f, permission);
+            return success;
+        } finally {
+            disconnect(client);
+        }
+    }
+
+    @Override
+    public FileStatus getFileStatus(Path f) throws IOException {
+        ChannelSftp channel = connect();
+        try {
+            FileStatus status = getFileStatus(channel, f);
+            return status;
+        } finally {
+            disconnect(channel);
+        }
+    }
+    @Override
+    public void close() throws IOException {
+        try {
+            super.close();
+            if (closed.getAndSet(true)) {
+                return;
+            }
+        } finally {
+            if (connectionPool != null) {
+                connectionPool.shutdown();
+            }
+        }
+    }
     private void checkNotClosed()throws IOException{
         if (closed.get()) {
             throw new IOException(uri+": "+E_FS_CLOSED);
         }
+    }
+
+    @VisibleForTesting
+    SFTPConnectionPool getConnectionPool() {
+        return connectionPool;
     }
 
 }
