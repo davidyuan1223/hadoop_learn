@@ -17,12 +17,12 @@
   </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
-      <module name="hadoop-annotations" options="-h $PROJECT_DIR$/hadoop-common-project/hadoop-annotations/target/native/javah/" />
-      <module name="hadoop-assemblies" options="-h $PROJECT_DIR$/hadoop-assemblies/target/native/javah/" />
-      <module name="hadoop-auth" options="-h $PROJECT_DIR$/hadoop-common-project/hadoop-auth/target/native/javah/" />
-      <module name="hadoop-common" options="-h $PROJECT_DIR$/hadoop-common-project/hadoop-common/target/native/javah/" />
-      <module name="hadoop-maven-plugins" options="-h $PROJECT_DIR$/hadoop-maven-plugins/target/native/javah/" />
-      <module name="hadoop-minkdc" options="-h $PROJECT_DIR$/hadoop-common-project/hadoop-minkdc/target/native/javah/" />
+      <module name="hadoop-annotations" options="-h /Users/fuyuanyuan/Programs/code/hadoop_learn/hadoop-common-project/hadoop-annotations/target/native/javah/" />
+      <module name="hadoop-assemblies" options="-h /Users/fuyuanyuan/Programs/code/hadoop_learn/hadoop-assemblies/target/native/javah/" />
+      <module name="hadoop-auth" options="-h /Users/fuyuanyuan/Programs/code/hadoop_learn/hadoop-common-project/hadoop-auth/target/native/javah/" />
+      <module name="hadoop-common" options="-h /Users/fuyuanyuan/Programs/code/hadoop_learn/hadoop-common-project/hadoop-common/target/native/javah/" />
+      <module name="hadoop-maven-plugins" options="-h /Users/fuyuanyuan/Programs/code/hadoop_learn/hadoop-maven-plugins/target/native/javah/" />
+      <module name="hadoop-minkdc" options="-h /Users/fuyuanyuan/Programs/code/hadoop_learn/hadoop-common-project/hadoop-minkdc/target/native/javah/" />
     </option>
   </component>
 </project>
