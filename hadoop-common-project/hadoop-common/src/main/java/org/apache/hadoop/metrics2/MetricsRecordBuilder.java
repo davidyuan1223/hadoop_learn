@@ -16,8 +16,8 @@ public abstract class MetricsRecordBuilder {
     public abstract MetricsRecordBuilder addGauge(MetricsInfo info,long value);
     public abstract MetricsRecordBuilder addGauge(MetricsInfo info,float value);
     public abstract MetricsRecordBuilder addGauge(MetricsInfo info,double value);
-    public abstract MetricsRecordBuilder parent();
-    public MetricsRecordBuilder endRecord(){
+    public abstract MetricsCollector parent();
+    public MetricsCollector endRecord(){
         return parent();
     }
 }

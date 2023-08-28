@@ -8,7 +8,7 @@ import java.lang.annotation.*;
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
 @Documented
-@Target({ElementType.TYPE,ElementType.METHOD})
+@Target({ElementType.FIELD,ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Metric {
     public enum Type{
